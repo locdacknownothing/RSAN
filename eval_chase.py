@@ -52,6 +52,9 @@ weight="Chase/Model/RSAN.h5"
 
 if os.path.isfile(weight): model.load_weights(weight)
 
+result_dir = 'Chase/test/result'
+os.makedirs(result_dir, exist_ok=True)
+
 model_checkpoint = ModelCheckpoint(weight, monitor='val_acc', verbose=1, save_best_only=True)
 y_pred = model.predict(x_test)
 y_pred= crop_to_shape(y_pred,(8,960,999,1))
@@ -62,17 +65,33 @@ for y in y_pred:
     _, temp = cv2.threshold(y, 0.5, 1, cv2.THRESH_BINARY)
     y_pred_threshold.append(temp)
     y = y * 255
-    cv2.imwrite('./Chase/test/result/%d.png' % i, y)
+    
+    file_name = '%d.png' % i
+    file_path = os.path.join(result_dir, file_name)
+    cv2.imwrite(file_path, y)
     i+=1
+    
 y_test = list(np.ravel(y_test))
 y_pred_threshold = list(np.ravel(y_pred_threshold))
 
 tn, fp, fn, tp = confusion_matrix(y_test, y_pred_threshold).ravel()
 
-print('Sensitivity:', recall_score(y_test, y_pred_threshold))
-print('Specificity:', tn / (tn + fp))
-print("F1:",2*tp/(2*tp+fn+fp))
-print('Accuracy:', accuracy_score(y_test, y_pred_threshold))
-print('AUC:', roc_auc_score(y_test, list(np.ravel(y_pred))))
+sensitivity = recall_score(y_test, y_pred_threshold)
+specificity = tn / (tn + fp)
+f1 = 2*tp/(2*tp+fn+fp)
+accuracy = accuracy_score(y_test, y_pred_threshold)
+auc = roc_auc_score(y_test, list(np.ravel(y_pred)))
 
+metric_dict = {
+    "Sensitivity": sensitivity,
+    "Specificity": specificity,
+    "F1": f1,
+    "Accuracy": accuracy,
+    "AUC": auc,
+}
+import json
+result_file_path = os.path.join(result_dir, "../metric.json")
 
+with open(result_file_path, "w") as f:
+    json.dump(metric_dict, f, indent=4)
+    

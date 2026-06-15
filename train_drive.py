@@ -2,7 +2,9 @@
 import numpy as np
 from keras.callbacks import TensorBoard, ModelCheckpoint
 np.random.seed(42)
-import scipy.misc as mc
+# import scipy.misc as mc
+import cv2
+import imageio.v2 as imageio
 
 data_location = ''
 import os
@@ -23,8 +25,8 @@ validate_label = []
 
 desired_size = 592
 for i in train_files:
-    im = mc.imread(training_images_loc + i)
-    label = mc.imread(training_label_loc + i.split('_')[0] + '_manual1.png',mode="L")
+    im = imageio.imread(training_images_loc + i)
+    label = imageio.imread(training_label_loc + i.split('_')[0] + '_manual1.png',mode="L")
     old_size = im.shape[:2]  # old_size is in (height, width) format
     delta_w = desired_size - old_size[1]
     delta_h = desired_size - old_size[0]
@@ -47,8 +49,8 @@ for i in train_files:
     train_label.append(temp)
 
 for i in validate_files:
-    im = mc.imread(validate_images_loc + i)
-    label = mc.imread(validate_label_loc + i.split('_')[0] + '_manual1.png',mode="L")
+    im = imageio.imread(validate_images_loc + i)
+    label = imageio.imread(validate_label_loc + i.split('_')[0] + '_manual1.png',mode="L")
     old_size = im.shape[:2]  # old_size is in (height, width) format
     delta_w = desired_size - old_size[1]
     delta_h = desired_size - old_size[0]

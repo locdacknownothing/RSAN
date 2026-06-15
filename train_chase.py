@@ -5,7 +5,10 @@ from sklearn.model_selection import train_test_split
 from keras.callbacks import TensorBoard, ModelCheckpoint
 from  util import *
 np.random.seed(42)
-import scipy.misc as mc
+# import scipy.misc as mc
+import cv2
+import imageio.v2 as imageio
+
 data_location = ''
 training_images_loc = data_location + 'Chase/train/image/'
 training_label_loc = data_location + 'Chase/train/label/'
@@ -19,8 +22,8 @@ validate_data = []
 validate_label = []
 desired_size=1008
 for i in train_files:
-    im = mc.imread(training_images_loc + i)
-    label = mc.imread(training_label_loc + "Image_" +i.split('_')[1].split(".")[0] +"_1stHO.png" )
+    im = imageio.imread(training_images_loc + i)
+    label = imageio.imread(training_label_loc + "Image_" +i.split('_')[1].split(".")[0] +"_1stHO.png", mode="L")
     old_size = im.shape[:2]  # old_size is in (height, width) format
     delta_w = desired_size - old_size[1]
     delta_h = desired_size - old_size[0]
@@ -43,8 +46,8 @@ for i in train_files:
     _, temp = cv2.threshold(temp, 127, 255, cv2.THRESH_BINARY)
     train_label.append(temp)
 for i in validate_files:
-    im = mc.imread(validate_images_loc + i)
-    label = mc.imread(validate_label_loc + "Image_" +i.split('_')[1].split(".")[0] +"_1stHO.png" )
+    im = imageio.imread(validate_images_loc + i)
+    label = imageio.imread(validate_label_loc + "Image_" +i.split('_')[1].split(".")[0] +"_1stHO.png", mode="L")
     old_size = im.shape[:2]  # old_size is in (height, width) format
     delta_w = desired_size - old_size[1]
     delta_h = desired_size - old_size[0]

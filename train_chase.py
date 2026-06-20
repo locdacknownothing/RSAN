@@ -5,10 +5,7 @@ from sklearn.model_selection import train_test_split
 from keras.callbacks import TensorBoard, ModelCheckpoint
 from  util import *
 np.random.seed(42)
-# import scipy.misc as mc
-import cv2
-import imageio.v2 as imageio
-
+import scipy.misc as mc
 data_location = ''
 training_images_loc = data_location + 'Chase/train/image/'
 training_label_loc = data_location + 'Chase/train/label/'
@@ -22,8 +19,8 @@ validate_data = []
 validate_label = []
 desired_size=1008
 for i in train_files:
-    im = imageio.imread(training_images_loc + i)
-    label = imageio.imread(training_label_loc + "Image_" +i.split('_')[1].split(".")[0] +"_1stHO.png", mode="L")
+    im = mc.imread(training_images_loc + i)
+    label = mc.imread(training_label_loc + "Image_" +i.split('_')[1].split(".")[0] +"_1stHO.png" )
     old_size = im.shape[:2]  # old_size is in (height, width) format
     delta_w = desired_size - old_size[1]
     delta_h = desired_size - old_size[0]
@@ -46,8 +43,8 @@ for i in train_files:
     _, temp = cv2.threshold(temp, 127, 255, cv2.THRESH_BINARY)
     train_label.append(temp)
 for i in validate_files:
-    im = imageio.imread(validate_images_loc + i)
-    label = imageio.imread(validate_label_loc + "Image_" +i.split('_')[1].split(".")[0] +"_1stHO.png", mode="L")
+    im = mc.imread(validate_images_loc + i)
+    label = mc.imread(validate_label_loc + "Image_" +i.split('_')[1].split(".")[0] +"_1stHO.png" )
     old_size = im.shape[:2]  # old_size is in (height, width) format
     delta_w = desired_size - old_size[1]
     delta_h = desired_size - old_size[0]
@@ -93,8 +90,9 @@ TensorBoard(log_dir='./autoencoder', histogram_freq=0,
             write_graph=True, write_images=True)
 
 from  RSAN import *
-model=RSANet(input_size=(desired_size,desired_size,3),start_neurons=16,keep_prob=0.78,lr=1e-3)
-weight="Chase/Model/RSAN.h5"
+loss_type = 'soft_dice'  # options: 'bce', 'soft_dice', 'soft_dice_cldice', 'cldice'
+model=RSANet(input_size=(desired_size,desired_size,3),start_neurons=16,keep_prob=0.78,lr=1e-3,loss_type=loss_type)
+weight="Chase/Model/RSAN_soft_dice.h5"
 
 restore=True
 

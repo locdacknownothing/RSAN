@@ -1,5 +1,5 @@
 import os
-from sklearn.metrics import  recall_score, roc_auc_score, accuracy_score, confusion_matrix
+from sklearn.metrics import recall_score, roc_auc_score, accuracy_score, confusion_matrix, matthews_corrcoef, jaccard_score
 from util import *
 
 from keras.callbacks import  ModelCheckpoint
@@ -48,50 +48,51 @@ y_test=crop_to_shape(y_test,(len(y_test), 960, 999, 1))
 
 from  RSAN import *
 model=RSANet(input_size=(desired_size,desired_size,3),start_neurons=16,keep_prob=0.78,lr=1e-3)
-weight="Chase/Model/RSAN.h5"
+weight="Chase/Model/RSAN_bce.h5"
 
 if os.path.isfile(weight): model.load_weights(weight)
-
-result_dir = 'Chase/test/result'
-os.makedirs(result_dir, exist_ok=True)
 
 model_checkpoint = ModelCheckpoint(weight, monitor='val_acc', verbose=1, save_best_only=True)
 y_pred = model.predict(x_test)
 y_pred= crop_to_shape(y_pred,(8,960,999,1))
+
+saved_image_dir = './Chase/test/result_bce'
+os.makedirs(saved_image_dir, exist_ok=True)
+
 y_pred_threshold = []
 i=0
 for y in y_pred:
-
     _, temp = cv2.threshold(y, 0.5, 1, cv2.THRESH_BINARY)
     y_pred_threshold.append(temp)
     y = y * 255
-    
-    file_name = '%d.png' % i
-    file_path = os.path.join(result_dir, file_name)
-    cv2.imwrite(file_path, y)
+
+    saved_image_name = '%d.png' % i
+    saved_image_path = os.path.join(saved_image_dir, saved_image_name)
+    cv2.imwrite(saved_image_path, y)
     i+=1
-    
 y_test = list(np.ravel(y_test))
 y_pred_threshold = list(np.ravel(y_pred_threshold))
 
 tn, fp, fn, tp = confusion_matrix(y_test, y_pred_threshold).ravel()
 
-sensitivity = recall_score(y_test, y_pred_threshold)
-specificity = tn / (tn + fp)
-f1 = 2*tp/(2*tp+fn+fp)
-accuracy = accuracy_score(y_test, y_pred_threshold)
-auc = roc_auc_score(y_test, list(np.ravel(y_pred)))
+# Original metrics
+print('Sensitivity:', recall_score(y_test, y_pred_threshold))
+print('Specificity:', tn / (tn + fp))
+print("F1:", 2*tp/(2*tp+fn+fp))
+print('Accuracy:', accuracy_score(y_test, y_pred_threshold))
+print('AUC:', roc_auc_score(y_test, list(np.ravel(y_pred))))
 
-metric_dict = {
-    "Sensitivity": sensitivity,
-    "Specificity": specificity,
-    "F1": f1,
-    "Accuracy": accuracy,
-    "AUC": auc,
-}
-import json
-result_file_path = os.path.join(result_dir, "../metric.json")
+# Additional metrics
+def dice_score(actual, predicted):
+    actual = np.asarray(actual).astype(np.bool)
+    predicted = np.asarray(predicted).astype(np.bool)
+    im_sum = actual.sum() + predicted.sum()
+    if im_sum == 0: return 1
+    intersection = np.logical_and(actual, predicted)
+    return 2. * intersection.sum() / im_sum
 
-with open(result_file_path, "w") as f:
-    json.dump(metric_dict, f, indent=4)
-    
+print('Dice Coefficient:', dice_score(y_test, y_pred_threshold))
+print('MCC:', matthews_corrcoef(y_test, y_pred_threshold))
+print('Jaccard Index:', jaccard_score(y_test, y_pred_threshold))
+
+

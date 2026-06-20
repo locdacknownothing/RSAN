@@ -2,9 +2,7 @@
 import numpy as np
 from keras.callbacks import TensorBoard, ModelCheckpoint
 np.random.seed(42)
-# import scipy.misc as mc
-import cv2
-import imageio.v2 as imageio
+import scipy.misc as mc
 
 data_location = ''
 import os
@@ -25,8 +23,8 @@ validate_label = []
 
 desired_size = 592
 for i in train_files:
-    im = imageio.imread(training_images_loc + i)
-    label = imageio.imread(training_label_loc + i.split('_')[0] + '_manual1.png',mode="L")
+    im = mc.imread(training_images_loc + i)
+    label = mc.imread(training_label_loc + i.split('_')[0] + '_manual1.png',mode="L")
     old_size = im.shape[:2]  # old_size is in (height, width) format
     delta_w = desired_size - old_size[1]
     delta_h = desired_size - old_size[0]
@@ -49,8 +47,8 @@ for i in train_files:
     train_label.append(temp)
 
 for i in validate_files:
-    im = imageio.imread(validate_images_loc + i)
-    label = imageio.imread(validate_label_loc + i.split('_')[0] + '_manual1.png',mode="L")
+    im = mc.imread(validate_images_loc + i)
+    label = mc.imread(validate_label_loc + i.split('_')[0] + '_manual1.png',mode="L")
     old_size = im.shape[:2]  # old_size is in (height, width) format
     delta_w = desired_size - old_size[1]
     delta_h = desired_size - old_size[0]
@@ -110,18 +108,19 @@ TensorBoard(log_dir='./autoencoder', histogram_freq=0,
 
 
 from RSAN import *
-model=RSANet(input_size=(desired_size,desired_size,3),start_neurons=16,keep_prob=0.85,lr=1e-3)
-weight="Drive/Model/RSAN.h5"
+loss_type = 'bce'  # options: 'bce', 'soft_dice', 'soft_dice_cldice', 'cldice'
+model=RSANet(input_size=(desired_size,desired_size,3),start_neurons=16,keep_prob=0.85,lr=1e-4,loss_type=loss_type)
+weight="Drive/Model/RSAN_bce.h5"
 
 
-restore=False
+restore=True
 if restore and os.path.isfile(weight):
     model.load_weights(weight)
 
 model_checkpoint = ModelCheckpoint(weight, monitor='val_accuracy', verbose=1, save_best_only=False)
 
 history=model.fit(x_train, y_train,
-                epochs=100, #first  100 with lr=1e-3,,and last 50 with lr=1e-4
+                epochs=50, #first  100 with lr=1e-3,,and last 50 with lr=1e-4
                 batch_size=2,
                 # validation_split=0.05,
                 validation_data=(x_validate, y_validate),

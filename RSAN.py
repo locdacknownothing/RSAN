@@ -3,7 +3,37 @@ from keras.layers import *
 from keras.optimizers import *
 from keras.models import *
 from attention_module import *
-def RSANet(input_size=(512, 512, 3), start_neurons=16, keep_prob=0.9,block_size=7,lr=1e-3):
+from loss.cldice_2d import soft_dice, soft_dice_cldice_loss, soft_clDice_loss
+
+def RSANet(input_size=(512, 512, 3), start_neurons=16, keep_prob=0.9,block_size=7,lr=1e-3, loss_type='bce'):
+    """Build and compile the RSANet model.
+
+    Args:
+        input_size: Input image dimensions (H, W, C).
+        start_neurons: Base number of filters.
+        keep_prob: DropBlock keep probability.
+        block_size: DropBlock block size.
+        lr: Learning rate for Adam optimizer.
+        loss_type: Loss function to use. One of:
+            - 'bce': binary cross-entropy (default)
+            - 'soft_dice': soft dice loss
+            - 'soft_dice_cldice': combined soft dice + clDice loss
+            - 'cldice': clDice loss only
+    """
+    # --- Select loss function ---
+    loss_functions = {
+        'bce': 'binary_crossentropy',
+        'soft_dice': soft_dice,
+        'soft_dice_cldice': soft_dice_cldice_loss(),
+        'cldice': soft_clDice_loss(),
+    }
+    if loss_type not in loss_functions:
+        raise ValueError(
+            f"Unknown loss_type='{loss_type}'. "
+            f"Choose from: {list(loss_functions.keys())}"
+        )
+    loss_fn = loss_functions[loss_type]
+
     inputs = Input(input_size)
     conv1 = residual_drop_block(inputs, start_neurons * 1, False, block_size=block_size, keep_prob=keep_prob)
     conv1 = RSAB(conv1, keep_prob=keep_prob, block_size=block_size)
@@ -43,7 +73,7 @@ def RSANet(input_size=(512, 512, 3), start_neurons=16, keep_prob=0.9,block_size=
 
     model = Model(input=inputs, output=output_layer)
 
-    model.compile(optimizer=Adam(lr=lr), loss='binary_crossentropy', metrics=['accuracy'])
+    model.compile(optimizer=Adam(lr=lr), loss=loss_fn, metrics=['accuracy'])
     return model
 
 

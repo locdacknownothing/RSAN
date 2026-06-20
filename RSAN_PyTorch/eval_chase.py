@@ -70,9 +70,23 @@ from RSAN import *
 model = RSANet(input_size=(desired_size, desired_size, 3), start_neurons=16, keep_prob=0.78, lr=1e-3)
 model = model.to(device)
 
-weight = os.path.join(data_location, "Chase/Model", args.weight_name)
+weight_default = 'RSAN.pth'
+if args.weight_name == weight_default:
+    snapshot_path = os.path.join(data_location, "Chase/Model")
+else:
+    snapshot_path = os.path.join(data_location, "Chase", args.weight_name)
+
+weight = os.path.join(snapshot_path, "best_model.pth")
+# weight = os.path.join(snapshot_path, "latest_model.pth")
+if not os.path.exists(weight):
+    weight = os.path.join(snapshot_path, args.weight_name)
+
 if os.path.isfile(weight):
-    model.load_state_dict(torch.load(weight, map_location=device))
+    checkpoint = torch.load(weight, map_location=device, weights_only=False)
+    if isinstance(checkpoint, dict) and 'state_dict' in checkpoint:
+        model.load_state_dict(checkpoint['state_dict'])
+    else:
+        model.load_state_dict(checkpoint)
     print(f"Loaded weights from {weight}")
 else:
     print(f"Warning: weights not found at {weight}")
@@ -122,12 +136,42 @@ f1 = 2 * tp / (2 * tp + fn + fp)
 accuracy = accuracy_score(y_test_ravel, y_pred_threshold_ravel)
 auc = roc_auc_score(y_test_ravel, list(np.ravel(y_pred)))
 
+import medpy.metric.binary as mmb
+
+dice_list = []
+hd95_list = []
+
+for idx in range(len(y_test)):
+    gt_slice = np.squeeze(y_test[idx])
+    pred_slice = np.squeeze(y_pred_threshold[idx])
+    
+    gt_slice = (gt_slice > 0.5).astype(np.uint8)
+    pred_slice = (pred_slice > 0.5).astype(np.uint8)
+    
+    if pred_slice.sum() > 0 and gt_slice.sum() > 0:
+        dice_val = mmb.dc(pred_slice, gt_slice)
+        hd95_val = mmb.hd95(pred_slice, gt_slice)
+    elif pred_slice.sum() > 0 and gt_slice.sum() == 0:
+        dice_val = 1.0
+        hd95_val = 0.0
+    else:
+        dice_val = 0.0
+        hd95_val = 0.0
+        
+    dice_list.append(dice_val)
+    hd95_list.append(hd95_val)
+
+mean_dice = np.mean(dice_list)
+mean_hd95 = np.mean(hd95_list)
+
 metric_dict = {
     "Sensitivity": sensitivity,
     "Specificity": specificity,
     "F1": f1,
     "Accuracy": accuracy,
     "AUC": auc,
+    "Dice": mean_dice,
+    "HD95": mean_hd95,
 }
 
 weight_prefix = os.path.splitext(args.weight_name)[0]

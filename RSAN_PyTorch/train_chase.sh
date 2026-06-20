@@ -1,2 +1,3 @@
-python3 train_chase.py --epochs 100 --batch_size 4 --weight_name RSAN_1306.pth
-python3 eval_chase.py --weight_name RSAN_1306.pth
+python3 train_chase.py --weight_name Model_Cl_1806 --epochs 100 --lr 0.001 --loss_name soft_dice_cldice --patience 100
+python3 train_chase.py --weight_name Model_Cl_1806 --restore --epochs 150 --lr 0.0001 --loss_name soft_dice_cldice --patience 100
+python3 eval_chase.py --weight_name Model_Cl_1806 

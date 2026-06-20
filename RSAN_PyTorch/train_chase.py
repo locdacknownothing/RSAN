@@ -19,6 +19,10 @@ parser.add_argument('--weight_name', type=str, default='RSAN.pth', help='Name of
 parser.add_argument('--restore', action='store_true', default=True, help='Restore weights from file if exists (default: True)')
 parser.add_argument('--no_restore', dest='restore', action='store_false', help='Do not restore weights from file')
 parser.add_argument('--epochs', type=int, default=100, help='Number of epochs to train (default: 100)')
+parser.add_argument('--lr', type=float, default=1e-3, help='Learning rate (default: 1e-3)')
+parser.add_argument('--patience', type=int, default=100, help='Early stopping patience (default: 100)')
+parser.add_argument('--loss_name', type=str, default='bce', choices=['bce', 'soft_dice_cldice'], help='Loss function name (default: bce)')
+parser.add_argument('--exclude_background', action='store_true', help='Exclude background channel from loss')
 args = parser.parse_args()
 
 # Set visible devices
@@ -115,67 +119,92 @@ y_train = np.transpose(y_train, (0, 3, 1, 2))
 x_validate = np.transpose(x_validate, (0, 3, 1, 2))
 y_validate = np.transpose(y_validate, (0, 3, 1, 2))
 
-# Load into Tensor Dataset and DataLoaders
+# Load into Tensor Dataset
 train_dataset = TensorDataset(torch.tensor(x_train), torch.tensor(y_train))
 val_dataset = TensorDataset(torch.tensor(x_validate), torch.tensor(y_validate))
 
-train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
-val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False)
-
 from RSAN import *
-model = RSANet(input_size=(desired_size, desired_size, 3), start_neurons=16, keep_prob=0.78, lr=1e-3)
+model = RSANet(input_size=(desired_size, desired_size, 3), start_neurons=16, keep_prob=0.78, lr=args.lr)
 model = model.to(device)
 
-weight = os.path.join(data_location, "Chase/Model", args.weight_name)
-os.makedirs(os.path.dirname(weight), exist_ok=True)
+weight_default = 'RSAN.pth'
+if args.weight_name == weight_default:
+    snapshot_path = os.path.join(data_location, "Chase/Model")
+else:
+    snapshot_path = os.path.join(data_location, "Chase", args.weight_name)
 
-if args.restore and os.path.isfile(weight):
-    model.load_state_dict(torch.load(weight, map_location=device))
-    print(f"Restored weights from {weight}")
+weight = os.path.join(snapshot_path, args.weight_name)
+os.makedirs(snapshot_path, exist_ok=True)
 
-optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
-criterion = nn.BCELoss()
+try:
+    from tensorboardX import SummaryWriter
+except ImportError:
+    from torch.utils.tensorboard import SummaryWriter
+from trainer import RSANTrainer
+
+writer = SummaryWriter(log_dir=os.path.join(snapshot_path, "log"))
+optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
+
+if args.loss_name == 'bce':
+    criterion = nn.BCELoss()
+elif args.loss_name == 'soft_dice_cldice':
+    import sys
+    sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../clDice')))
+    from cldice_loss.pytorch.cldice import soft_dice_cldice
+    
+    class SoftDiceclDiceLossWrapper(nn.Module):
+        def __init__(self, iter_=3, alpha=0.5, smooth=1.0, exclude_background=False):
+            super().__init__()
+            self.exclude_background = exclude_background
+            self.loss_fn = soft_dice_cldice(iter_=iter_, alpha=alpha, smooth=smooth, exclude_background=exclude_background)
+            
+        def forward(self, outputs, targets):
+            # Save original exclude_background setting
+            orig_exclude = self.loss_fn.exclude_background
+            # If outputs channel dimension is 1, we must override exclude_background to False
+            if outputs.shape[1] == 1:
+                self.loss_fn.exclude_background = False
+            try:
+                loss = self.loss_fn(targets, outputs)
+            finally:
+                # Restore original exclude_background setting
+                self.loss_fn.exclude_background = orig_exclude
+            return loss
+            
+    criterion = SoftDiceclDiceLossWrapper(iter_=3, alpha=0.5, smooth=1.0, exclude_background=args.exclude_background)
+
+trainer = RSANTrainer(
+    model=model,
+    dataset=train_dataset,
+    optimizer=optimizer,
+    criterion=criterion,
+    writer=writer,
+    val_dataset=val_dataset,
+    patience=args.patience,  # Early stopping patience
+    early_stopping_mode='max',
+    early_stopping_metric='val_acc',
+    snapshot_path=snapshot_path,
+    batch_size=args.batch_size,
+    device=device
+)
+
+# Handle resume logic: prioritize latest_model.pth if it exists, otherwise fall back to weight (RSAN.pth)
+resume_path = None
+if args.restore:
+    latest_path = os.path.join(snapshot_path, 'latest_model.pth')
+    if os.path.exists(latest_path):
+        resume_path = latest_path
+    elif os.path.exists(weight):
+        # Backward compatibility with original weight format (only weights)
+        resume_path = weight
+        # Load directly because base resume expects a full checkpoint dict
+        try:
+            model.load_state_dict(torch.load(weight, map_location=device))
+            print(f"Restored weights from {weight}")
+        except Exception as e:
+            print(f"Failed to load weights directly from {weight}: {e}")
 
 print("Starting training...")
-epochs = args.epochs
-for epoch in range(1, epochs + 1):
-    model.train()
-    train_loss = 0.0
-    train_acc = 0.0
-    
-    for inputs, targets in train_loader:
-        inputs, targets = inputs.to(device), targets.to(device)
-        optimizer.zero_grad()
-        outputs = model(inputs)
-        loss = criterion(outputs, targets)
-        loss.backward()
-        optimizer.step()
-        
-        train_loss += loss.item() * inputs.size(0)
-        preds = (outputs > 0.5).float()
-        train_acc += (preds == targets).float().mean().item() * inputs.size(0)
-        
-    train_loss /= len(train_dataset)
-    train_acc /= len(train_dataset)
-    
-    # Validation loop
-    model.eval()
-    val_loss = 0.0
-    val_acc = 0.0
-    with torch.no_grad():
-        for inputs, targets in val_loader:
-            inputs, targets = inputs.to(device), targets.to(device)
-            outputs = model(inputs)
-            loss = criterion(outputs, targets)
-            
-            val_loss += loss.item() * inputs.size(0)
-            preds = (outputs > 0.5).float()
-            val_acc += (preds == targets).float().mean().item() * inputs.size(0)
-            
-    val_loss /= len(val_dataset)
-    val_acc /= len(val_dataset)
-    
-    print(f"Epoch {epoch}/{epochs} - loss: {train_loss:.4f} - accuracy: {train_acc:.4f} - val_loss: {val_loss:.4f} - val_accuracy: {val_acc:.4f}")
-    
-    # Save checkpoint
-    torch.save(model.state_dict(), weight)
+trainer.train(max_epochs=args.epochs, resume_path=resume_path)
+writer.close()
+

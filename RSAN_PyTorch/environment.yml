@@ -2,14 +2,16 @@ name: rsan_torch
 channels:
   - defaults
 dependencies:
-  - python=3.7
-  - mkl<2024.1
-  - intel-openmp<2024.1
+  - python=3.10
   - pip
   - pip:
       - torch==1.13.1
-      - numpy==1.18.5
-      - scipy==1.1.0
-      - scikit-learn==0.22.2
+      - numpy<2
+      - scipy
+      - scikit-learn
       - opencv-python==4.5.5.64
-      - imageio==2.15.0
+      - imageio
+      - tensorboard
+      - tensorboardX
+      - MedPy
+
